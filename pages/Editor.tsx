@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { DbService } from '../services/api';
 import { CONTRACT_TEMPLATES, PLANS } from '../constants';
-import { Save, Download, ArrowLeft, Lock, Upload, Image as ImageIcon, FileText, CheckCircle, Edit3 } from 'lucide-react';
+import { Save, Download, ArrowLeft, Lock, Upload, Image as ImageIcon, FileText, CheckCircle, Edit3, AlertCircle } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -15,6 +15,7 @@ export const Editor = () => {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [viewMode, setViewMode] = useState<'form' | 'preview'>('form');
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [formErrors, setFormErrors] = useState<Record<string, boolean>>({}); // State for validation errors
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string>('');
   const [saving, setSaving] = useState(false);
@@ -65,6 +66,44 @@ export const Editor = () => {
 
   const handleInputChange = (key: string, value: string) => {
     setFormData(prev => ({ ...prev, [key]: value }));
+    // Clear error when user types
+    if (formErrors[key]) {
+      setFormErrors(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const validateForm = () => {
+    if (!currentTemplate) return false;
+    
+    const newErrors: Record<string, boolean> = {};
+    let isValid = true;
+    let firstErrorField = null;
+
+    currentTemplate.fields.forEach(field => {
+      // Check if field is optional based on key naming convention
+      const isOptional = field.key.toLowerCase().includes('opcional');
+      const value = formData[field.key];
+
+      // If not optional and value is empty or just whitespace
+      if (!isOptional && (!value || !value.trim())) {
+        newErrors[field.key] = true;
+        isValid = false;
+        if (!firstErrorField) firstErrorField = field.key;
+      }
+    });
+
+    setFormErrors(newErrors);
+
+    if (!isValid) {
+      // Scroll to the first error
+      const element = document.getElementById(`field-${firstErrorField}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      alert('Por favor, preencha todos os campos obrigatórios assinalados em vermelho.');
+    }
+
+    return isValid;
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,6 +197,8 @@ export const Editor = () => {
               onClick={() => {
                 setSelectedTemplateId(template.id);
                 setViewMode('form');
+                setFormErrors({});
+                setFormData({});
               }}
               className="bg-white p-6 rounded-xl border border-slate-200 hover:border-brand-500 hover:shadow-md cursor-pointer transition-all group flex flex-col h-full"
             >
@@ -189,6 +230,7 @@ export const Editor = () => {
                } else {
                  setSelectedTemplateId('');
                  setFormData({});
+                 setFormErrors({});
                }
              }} 
              className="text-slate-500 hover:text-slate-800 transition-colors"
@@ -282,38 +324,48 @@ export const Editor = () => {
              {/* Dynamic Fields */}
              <h3 className="font-semibold mb-6 text-xl text-slate-800">Preencha os dados do Contrato</h3>
              <div className="space-y-5">
-               {currentTemplate?.fields.map(field => (
-                 <div key={field.key}>
-                   <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                     {field.label}
-                     {field.key.includes('opcional') ? <span className="text-slate-400 font-normal ml-1">(Opcional)</span> : <span className="text-red-500 ml-1">*</span>}
-                   </label>
-                   {field.type === 'textarea' ? (
-                     <textarea 
-                      className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-slate-800 transition-shadow shadow-sm placeholder:text-slate-400"
-                      rows={4}
-                      value={formData[field.key] || ''}
-                      onChange={(e) => handleInputChange(field.key, e.target.value)}
-                      placeholder={field.placeholder || 'Digite aqui...'}
-                     />
-                   ) : (
-                     <input 
-                      type={field.type}
-                      className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-slate-800 transition-shadow shadow-sm placeholder:text-slate-400"
-                      value={formData[field.key] || ''}
-                      onChange={(e) => handleInputChange(field.key, e.target.value)}
-                      placeholder={field.placeholder || 'Digite aqui...'}
-                     />
-                   )}
-                 </div>
-               ))}
+               {currentTemplate?.fields.map(field => {
+                 const isError = formErrors[field.key];
+                 return (
+                   <div key={field.key} id={`field-${field.key}`}>
+                     <label className={`block text-sm font-semibold mb-1.5 ${isError ? 'text-red-600' : 'text-slate-700'}`}>
+                       {field.label}
+                       {field.key.includes('opcional') ? <span className="text-slate-400 font-normal ml-1">(Opcional)</span> : <span className="text-red-500 ml-1">*</span>}
+                     </label>
+                     {field.type === 'textarea' ? (
+                       <textarea 
+                        className={`w-full px-4 py-3 bg-white border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-slate-800 transition-shadow shadow-sm placeholder:text-slate-400 ${isError ? 'border-red-500 ring-1 ring-red-100' : 'border-slate-300'}`}
+                        rows={4}
+                        value={formData[field.key] || ''}
+                        onChange={(e) => handleInputChange(field.key, e.target.value)}
+                        placeholder={field.placeholder || 'Digite aqui...'}
+                       />
+                     ) : (
+                       <input 
+                        type={field.type}
+                        className={`w-full px-4 py-3 bg-white border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-slate-800 transition-shadow shadow-sm placeholder:text-slate-400 ${isError ? 'border-red-500 ring-1 ring-red-100' : 'border-slate-300'}`}
+                        value={formData[field.key] || ''}
+                        onChange={(e) => handleInputChange(field.key, e.target.value)}
+                        placeholder={field.placeholder || 'Digite aqui...'}
+                       />
+                     )}
+                     {isError && (
+                       <p className="text-xs text-red-500 mt-1 flex items-center">
+                         <AlertCircle className="w-3 h-3 mr-1" /> Campo obrigatório
+                       </p>
+                     )}
+                   </div>
+                 );
+               })}
              </div>
 
              <div className="mt-8 pt-6 border-t border-slate-100">
                <button 
                  onClick={() => {
-                   window.scrollTo(0,0);
-                   setViewMode('preview');
+                   if (validateForm()) {
+                     window.scrollTo(0,0);
+                     setViewMode('preview');
+                   }
                  }}
                  className="w-full bg-brand-600 hover:bg-brand-700 text-white text-lg font-semibold py-4 rounded-xl shadow-lg shadow-brand-200 transition-all transform active:scale-[0.99] flex items-center justify-center"
                >
